@@ -798,13 +798,39 @@ grub_font_get_glyph_internal (grub_font_t font, grub_uint32_t code)
 	  return 0;
 	}
 
+      enum grub_video_blit_format blit_format;
+      unsigned int mode_type;
+
       /* Calculate real struct size of current glyph. */
-      if (grub_video_bitmap_calc_1bpp_bufsz (width, height, &len) ||
-	  grub_add (sizeof (struct grub_font_glyph), len, &sz))
-	{
-	  remove_font (font);
-	  return 0;
-	}
+      if ((index_entry->storage_flags & FONT_FORMAT_STORAGE_DEPTH_MASK) == FONT_FORMAT_STORAGE_8BIT_GRAY)
+        {
+	    /* 8 bpp */
+	    len = width * height;
+	    if (grub_add (sizeof (struct grub_font_glyph), len, &sz))
+	    {
+		remove_font (font);
+		return 0;
+	    }
+	    blit_format = GRUB_VIDEO_BLIT_FORMAT_8BIT_MASK;
+	    mode_type = GRUB_VIDEO_MODE_TYPE_RGB;
+        }
+      else if ((index_entry->storage_flags & FONT_FORMAT_STORAGE_DEPTH_MASK) == FONT_FORMAT_STORAGE_1BIT)
+        {
+	    /* 1 bpp  */
+	    if (grub_video_bitmap_calc_1bpp_bufsz (width, height, &len) ||
+		grub_add (sizeof (struct grub_font_glyph), len, &sz))
+	    {
+		remove_font (font);
+		return 0;
+	    }
+	    blit_format = GRUB_VIDEO_BLIT_FORMAT_1BIT_PACKED_MASK;
+	    mode_type = GRUB_VIDEO_MODE_TYPE_1BIT_BITMAP;
+        }
+      else
+        {
+          remove_font (font);
+          return 0;
+        }
 
       /* Allocate and initialize the glyph struct. */
       glyph = grub_malloc (sz);
@@ -814,6 +840,8 @@ grub_font_get_glyph_internal (grub_font_t font, grub_uint32_t code)
 	  return 0;
 	}
 
+      glyph->blit_format = blit_format;
+      glyph->mode_type = mode_type;
       glyph->font = font;
       glyph->width = width;
       glyph->height = height;
@@ -1628,8 +1656,8 @@ grub_font_draw_glyph (struct grub_font_glyph * glyph,
   glyph_bitmap.mode_info.width = glyph->width;
   glyph_bitmap.mode_info.height = glyph->height;
   glyph_bitmap.mode_info.mode_type
-    = (1 << GRUB_VIDEO_MODE_TYPE_DEPTH_POS) | GRUB_VIDEO_MODE_TYPE_1BIT_BITMAP;
-  glyph_bitmap.mode_info.blit_format = GRUB_VIDEO_BLIT_FORMAT_1BIT_PACKED;
+    = (1 << GRUB_VIDEO_MODE_TYPE_DEPTH_POS) | glyph->mode_type;
+  glyph_bitmap.mode_info.blit_format = glyph->blit_format;
   glyph_bitmap.mode_info.bpp = 1;
 
   /* Really 1 bit per pixel.  */

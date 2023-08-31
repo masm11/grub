@@ -107,8 +107,11 @@ enum grub_video_blit_format
      */
     GRUB_VIDEO_BLIT_FORMAT_INDEXCOLOR_ALPHA,
 
-    /* Two color bitmap; bits packed: rows are not padded to byte boundary.  */
-    GRUB_VIDEO_BLIT_FORMAT_1BIT_PACKED
+    /* Masks. Uses bg_* and fg_* fields in grub_video_mode_info  */
+    /* Two levels of alpha mask, 1-bit; bits packed: rows are not padded to byte boundary.  */
+    GRUB_VIDEO_BLIT_FORMAT_1BIT_PACKED_MASK,
+    /* 8-bit alpha mask  */
+    GRUB_VIDEO_BLIT_FORMAT_8BIT_MASK,
   };
 
 /* Define blitting operators.  */

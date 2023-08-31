@@ -95,7 +95,8 @@ enum
     GRUB_FONT_FLAG_BOLD	= 1,
     GRUB_FONT_FLAG_NOBITMAP = 2,
     GRUB_FONT_FLAG_NOHINTING = 4,
-    GRUB_FONT_FLAG_FORCEHINT = 8
+    GRUB_FONT_FLAG_FORCEHINT = 8,
+    GRUB_FONT_FLAG_8BIT_AA = 4096
   };
 
 struct grub_font_info
@@ -145,8 +146,13 @@ add_glyph (struct grub_font_info *font_info, FT_UInt glyph_idx, FT_Face face,
   grub_uint8_t *data;
   int mask, i, j, bitmap_size;
   FT_GlyphSlot glyph;
-  int flag = FT_LOAD_RENDER | FT_LOAD_MONOCHROME;
+  int flag = FT_LOAD_RENDER;
   FT_Error err;
+
+  if (font_info->flags & GRUB_FONT_FLAG_8BIT_AA)
+    flag |= FT_LOAD_TARGET_NORMAL;
+  else
+    flag |= FT_LOAD_MONOCHROME;
 
   if (font_info->flags & GRUB_FONT_FLAG_NOBITMAP)
     flag |= FT_LOAD_NO_BITMAP;
@@ -237,7 +243,10 @@ add_glyph (struct grub_font_info *font_info, FT_UInt glyph_idx, FT_Face face,
   width = glyph->bitmap.width - cutleft - cutright;
   height = glyph->bitmap.rows - cutbottom - cuttop;
 
-  bitmap_size = ((width * height + 7) / 8);
+  if (font_info->flags & GRUB_FONT_FLAG_8BIT_AA)
+    bitmap_size = width * height;
+  else
+    bitmap_size = ((width * height + 7) / 8);
   glyph_info = xmalloc (sizeof (struct grub_glyph_info));
   glyph_info->bitmap = xmalloc (bitmap_size);
   glyph_info->bitmap_size = bitmap_size;
@@ -265,13 +274,22 @@ add_glyph (struct grub_font_info *font_info, FT_UInt glyph_idx, FT_Face face,
   if (glyph_info->y_ofs + height > font_info->max_y)
     font_info->max_y = glyph_info->y_ofs + height;
 
-  mask = 0;
-  data = &glyph_info->bitmap[0] - 1;
-  for (j = cuttop; j < height + cuttop; j++)
-    for (i = cutleft; i < width + cutleft; i++)
-      add_pixel (&data, &mask,
-		 glyph->bitmap.buffer[i / 8 + j * glyph->bitmap.pitch] &
-		 (1 << (7 - (i & 7))));
+  if (font_info->flags & GRUB_FONT_FLAG_8BIT_AA)
+  {
+      data = &glyph_info->bitmap[0];
+      for (j = cuttop; j < height + cuttop; j++)
+	memcpy(data + width * j, &glyph->bitmap.buffer[j * glyph->bitmap.pitch], width);
+  }
+  else
+  {
+      mask = 0;
+      data = &glyph_info->bitmap[0] - 1;
+      for (j = cuttop; j < height + cuttop; j++)
+	for (i = cutleft; i < width + cutleft; i++)
+	  add_pixel (&data, &mask,
+		     glyph->bitmap.buffer[i / 8 + j * glyph->bitmap.pitch] &
+		     (1 << (7 - (i & 7))));
+  }
 }
 
 struct glyph_replace *subst_rightjoin, *subst_leftjoin, *subst_medijoin;
@@ -708,8 +726,7 @@ add_font (struct grub_font_info *font_info, FT_Face face, int nocut)
       grub_uint32_t j;
 
       for (i = 0; i < font_info->num_range; i++)
-	for (j = font_info->ranges[i * 2]; j <= font_info->ranges[i * 2 + 1];
-	     j++)
+        for (j = font_info->ranges[i * 2]; j <= font_info->ranges[i * 2 + 1]; j++)
 	  add_char (font_info, face, j, nocut);
     }
   else
@@ -717,9 +734,9 @@ add_font (struct grub_font_info *font_info, FT_Face face, int nocut)
       grub_uint32_t char_code, glyph_index;
 
       for (char_code = FT_Get_First_Char (face, &glyph_index);
-	   glyph_index;
-	   char_code = FT_Get_Next_Char (face, char_code, &glyph_index))
-	add_char (font_info, face, char_code, nocut);
+            glyph_index;
+	    char_code = FT_Get_Next_Char (face, char_code, &glyph_index))
+        add_char (font_info, face, char_code, nocut);
     }
 }
 
@@ -803,12 +820,30 @@ print_glyphs (struct grub_font_info *font_info)
 		  (y >= glyph->y_ofs) &&
 		  (y < glyph->y_ofs + glyph->height))
 		{
-		  line[line_pos++] = (*bitmap & mask) ? '#' : '_';
-		  mask >>= 1;
-		  if (mask == 0)
+		  if (font_info->flags & GRUB_FONT_FLAG_8BIT_AA)
 		    {
-		      mask = 0x80;
+		      if (*bitmap > 127)
+			line[line_pos++] = '#';
+		      else if (*bitmap > 64)
+			line[line_pos++] = '8';
+		      else if (*bitmap > 8)
+			line[line_pos++] = 'o';
+		      else if (*bitmap > 1)
+			line[line_pos++] = '-';
+		      else
+			line[line_pos++] = '_';
+
 		      bitmap++;
+		    }
+		  else
+		    {
+		      line[line_pos++] = (*bitmap & mask) ? '#' : '_';
+		      mask >>= 1;
+		      if (mask == 0)
+			{
+			  mask = 0x80;
+			  bitmap++;
+			}
 		    }
 		}
 	      else if ((x >= 0) &&
@@ -942,7 +977,10 @@ write_font_pf2 (struct grub_font_info *font_info, char *output_file)
       grub_uint8_t data8;
       data32 = grub_cpu_to_be32 (cur->char_code);
       grub_util_write_image ((char *) &data32, 4, file, output_file);
-      data8 = 0;
+      if (font_info->flags & GRUB_FONT_FLAG_8BIT_AA)
+        data8 = FONT_FORMAT_STORAGE_8BIT_GRAY;
+      else
+        data8 = FONT_FORMAT_STORAGE_1BIT;
       grub_util_write_image ((char *) &data8, 1, file, output_file);
       data32 = grub_cpu_to_be32 (offset);
       grub_util_write_image ((char *) &data32, 4, file, output_file);
@@ -1006,6 +1044,7 @@ static struct argp_option options[] = {
     */
    N_("ignore bitmap strikes when loading"), 0},
   {"verbose",  'v', 0, 0, N_("print verbose messages."), 0},
+  {"antialiasing",  0x103, 0, 0, "use antialiasing when rendering glyphs", 0},
   { 0, 0, 0, 0, 0, 0 }
 };
 #define my_argp_parse argp_parse
@@ -1137,6 +1176,10 @@ argp_parser (int key, char *arg, struct my_argp_state *state)
 
     case 'v':
       font_verbosity++;
+      break;
+
+    case 0x103:
+      arguments->font_info.flags |= GRUB_FONT_FLAG_8BIT_AA;
       break;
 
     case MY_ARGP_KEY_ARG:
@@ -1276,7 +1319,7 @@ main (int argc, char *argv[])
 			   size, size, err,
 			   (err > 0 && err < (signed) ARRAY_SIZE (ft_errmsgs))
 			   ? ft_errmsgs[err] : "");
-	add_font (&arguments.font_info, ft_face, arguments.file_format != PF2);
+	add_font (&arguments.font_info, ft_face, arguments.file_format != PF2 || (arguments.font_info.flags & GRUB_FONT_FLAG_8BIT_AA));
 	FT_Done_Face (ft_face);
       }
   }

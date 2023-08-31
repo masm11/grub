@@ -79,6 +79,9 @@ struct grub_font_glyph
   /* Number of pixels to advance to start the next character.  */
   grub_uint16_t device_width;
 
+  enum grub_video_blit_format blit_format;
+  unsigned int mode_type;
+
   /* Row-major order, packed bits (no padding; rows can break within a byte).
      The length of the array is (width * height + 7) / 8.  Within a
      byte, the most significant bit is the first (leftmost/uppermost) pixel.

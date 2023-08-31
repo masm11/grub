@@ -160,7 +160,7 @@ grub_video_get_blit_format (struct grub_video_mode_info *mode_info)
 	}
     }
   else if (mode_info->bpp == 1)
-    return GRUB_VIDEO_BLIT_FORMAT_1BIT_PACKED;
+    return GRUB_VIDEO_BLIT_FORMAT_1BIT_PACKED_MASK;
 
   /* Backup route.  Unknown format.  */
 
