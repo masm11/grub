@@ -196,22 +196,44 @@ add_glyph (struct grub_font_info *font_info, FT_UInt glyph_idx, FT_Face face,
     {
       for (cuttop = 0; cuttop < glyph->bitmap.rows; cuttop++)
 	{
-	  for (j = 0; j < glyph->bitmap.width; j++)
-	    if (glyph->bitmap.buffer[j / 8 + cuttop * glyph->bitmap.pitch]
-		& (1 << (7 - (j & 7))))
-	      break;
-	  if (j != glyph->bitmap.width)
-	    break;
+	    if (font_info->flags & GRUB_FONT_FLAG_8BIT_AA)
+	      {
+		for (j = 0; j < glyph->bitmap.width; j++)
+		  if (glyph->bitmap.buffer[j + cuttop * glyph->bitmap.pitch])
+		    break;
+		if (j != glyph->bitmap.width)
+		  break;
+	      }
+	    else
+	      {
+		for (j = 0; j < glyph->bitmap.width; j++)
+		  if (glyph->bitmap.buffer[j / 8 + cuttop * glyph->bitmap.pitch]
+		      & (1 << (7 - (j & 7))))
+		    break;
+		if (j != glyph->bitmap.width)
+		  break;
+	      }
 	}
 
       for (cutbottom = glyph->bitmap.rows - 1; cutbottom >= 0; cutbottom--)
 	{
-	  for (j = 0; j < glyph->bitmap.width; j++)
-	    if (glyph->bitmap.buffer[j / 8 + cutbottom * glyph->bitmap.pitch]
-		& (1 << (7 - (j & 7))))
-	      break;
-	  if (j != glyph->bitmap.width)
-	    break;
+	  if (font_info->flags & GRUB_FONT_FLAG_8BIT_AA)
+	    {
+	      for (j = 0; j < glyph->bitmap.width; j++)
+		if (glyph->bitmap.buffer[j + cutbottom * glyph->bitmap.pitch])
+		  break;
+	      if (j != glyph->bitmap.width)
+		break;
+	    }
+	  else
+	    {
+	      for (j = 0; j < glyph->bitmap.width; j++)
+		if (glyph->bitmap.buffer[j / 8 + cutbottom * glyph->bitmap.pitch]
+		    & (1 << (7 - (j & 7))))
+		  break;
+	      if (j != glyph->bitmap.width)
+		break;
+	    }
 	}
       cutbottom = glyph->bitmap.rows - 1 - cutbottom;
       if (cutbottom + cuttop >= glyph->bitmap.rows)
@@ -219,21 +241,43 @@ add_glyph (struct grub_font_info *font_info, FT_UInt glyph_idx, FT_Face face,
 
       for (cutleft = 0; cutleft < glyph->bitmap.width; cutleft++)
 	{
-	  for (j = 0; j < glyph->bitmap.rows; j++)
-	    if (glyph->bitmap.buffer[cutleft / 8 + j * glyph->bitmap.pitch]
-		& (1 << (7 - (cutleft & 7))))
-	      break;
-	  if (j != glyph->bitmap.rows)
-	    break;
+	  if (font_info->flags & GRUB_FONT_FLAG_8BIT_AA)
+	    {
+	      for (j = 0; j < glyph->bitmap.rows; j++)
+		if (glyph->bitmap.buffer[cutleft + j * glyph->bitmap.pitch])
+		  break;
+	      if (j != glyph->bitmap.rows)
+		break;
+	    }
+	  else
+	    {
+	      for (j = 0; j < glyph->bitmap.rows; j++)
+		if (glyph->bitmap.buffer[cutleft / 8 + j * glyph->bitmap.pitch]
+		    & (1 << (7 - (cutleft & 7))))
+		  break;
+	      if (j != glyph->bitmap.rows)
+		break;
+	    }
 	}
       for (cutright = glyph->bitmap.width - 1; cutright >= 0; cutright--)
 	{
-	  for (j = 0; j < glyph->bitmap.rows; j++)
-	    if (glyph->bitmap.buffer[cutright / 8 + j * glyph->bitmap.pitch]
-		& (1 << (7 - (cutright & 7))))
-	      break;
-	  if (j != glyph->bitmap.rows)
-	    break;
+	  if (font_info->flags & GRUB_FONT_FLAG_8BIT_AA)
+	    {
+	      for (j = 0; j < glyph->bitmap.rows; j++)
+		if (glyph->bitmap.buffer[cutright + j * glyph->bitmap.pitch])
+		  break;
+	      if (j != glyph->bitmap.rows)
+		break;
+	    }
+	  else
+	    {
+	      for (j = 0; j < glyph->bitmap.rows; j++)
+		if (glyph->bitmap.buffer[cutright / 8 + j * glyph->bitmap.pitch]
+		    & (1 << (7 - (cutright & 7))))
+		  break;
+	      if (j != glyph->bitmap.rows)
+		break;
+	    }
 	}
       cutright = glyph->bitmap.width - 1 - cutright;
       if (cutright + cutleft >= glyph->bitmap.width)
@@ -278,7 +322,7 @@ add_glyph (struct grub_font_info *font_info, FT_UInt glyph_idx, FT_Face face,
   {
       data = &glyph_info->bitmap[0];
       for (j = cuttop; j < height + cuttop; j++)
-	memcpy(data + width * j, &glyph->bitmap.buffer[j * glyph->bitmap.pitch], width);
+	memcpy(data + width * (j - cuttop), &glyph->bitmap.buffer[j * glyph->bitmap.pitch], width);
   }
   else
   {
@@ -927,8 +971,6 @@ write_font_pf2 (struct grub_font_info *font_info, char *output_file)
   		      font_info->size, &offset, file, output_file);
   write_be16_section (FONT_FORMAT_SECTION_NAMES_MAX_CHAR_WIDTH,
   		      font_info->max_width, &offset, file, output_file);
-  write_be16_section (FONT_FORMAT_SECTION_NAMES_MAX_CHAR_HEIGHT,
-  		      font_info->max_height, &offset, file, output_file);
 
   if (! font_info->desc)
     {
@@ -945,6 +987,11 @@ write_font_pf2 (struct grub_font_info *font_info, char *output_file)
       else
 	font_info->asce = font_info->max_y;
     }
+
+  if (font_info->max_height < font_info->asce + font_info->desc)
+      font_info->max_height = font_info->asce + font_info->desc;
+  write_be16_section (FONT_FORMAT_SECTION_NAMES_MAX_CHAR_HEIGHT,
+  		      font_info->max_height, &offset, file, output_file);
 
   write_be16_section (FONT_FORMAT_SECTION_NAMES_ASCENT,
   		      font_info->asce, &offset, file, output_file);
@@ -1319,7 +1366,7 @@ main (int argc, char *argv[])
 			   size, size, err,
 			   (err > 0 && err < (signed) ARRAY_SIZE (ft_errmsgs))
 			   ? ft_errmsgs[err] : "");
-	add_font (&arguments.font_info, ft_face, arguments.file_format != PF2 || (arguments.font_info.flags & GRUB_FONT_FLAG_8BIT_AA));
+	add_font (&arguments.font_info, ft_face, arguments.file_format != PF2);
 	FT_Done_Face (ft_face);
       }
   }
