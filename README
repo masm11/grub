@@ -7,7 +7,6 @@ https://lists.gnu.org/archive/html/grub-devel/2010-02/msg00205.html
 Thanks for the nice patch!
 
 The grub-mkfont tool has the `--antialiasing` option.
-You need a non-antialiased font for terminal.
 
 -- 
 Yuuki Harano
